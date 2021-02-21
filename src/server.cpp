@@ -271,7 +271,34 @@ Server::Server(
 			"minetest_core_server_packet_recv_processed",
 			"Valid received packets processed");
 
+	m_sendblocks_time = m_metrics_backend->addCounter(
+			"minetest_core_sendblockstime",
+			"Microseconds used for block sending"
+	);
+
+	m_sent_blocks = m_metrics_backend->addCounter(
+			"minetest_core_sent_blocks",
+			"number of sent blocks"
+	);
+
+	m_env_step_time = m_metrics_backend->addCounter(
+			"minetest_core_step_time",
+			"step time count"
+	);
+
+	m_map_timer_unload_time = m_metrics_backend->addCounter(
+			"minetest_core_timer_unload_time",
+			"map timer and unload time"
+	);
+
+	m_mapedit_time = m_metrics_backend->addCounter(
+			"minetest_core_mapedit_time",
+			"map edit time"
+	);
+
 	m_lag_gauge->set(g_settings->getFloat("dedicated_server_step"));
+
+	m_threadpool = new ThreadPool(8);
 }
 
 Server::~Server()
@@ -443,7 +470,7 @@ void Server::init()
 
 	// Initialize Environment
 	m_startup_server_map = nullptr; // Ownership moved to ServerEnvironment
-	m_env = new ServerEnvironment(servermap, m_script, this, m_path_world);
+	m_env = new ServerEnvironment(servermap, m_script, this, m_path_world, m_metrics_backend.get());
 
 	m_inventory_mgr->setEnv(m_env);
 	m_clients.setEnv(m_env);
@@ -603,18 +630,28 @@ void Server::AsyncRunStep(bool initial_step)
 		}
 		m_env->reportMaxLagEstimate(max_lag);
 		// Step environment
+
+		u64 start_time = porting::getTimeUs();
 		m_env->step(dtime);
+		u64 end_time = porting::getTimeUs();
+
+		m_env_step_time->increment(end_time - start_time);
 	}
 
 	static const float map_timer_and_unload_dtime = 2.92;
 	if(m_map_timer_and_unload_interval.step(dtime, map_timer_and_unload_dtime))
 	{
+		u64 start_time = porting::getTimeUs();
 		MutexAutoLock lock(m_env_mutex);
 		// Run Map's timers and unload unused data
 		ScopeProfiler sp(g_profiler, "Server: map timer and unload");
 		m_env->getMap().timerUpdate(map_timer_and_unload_dtime,
 			g_settings->getFloat("server_unload_unused_data_timeout"),
 			U32_MAX);
+
+		u64 end_time = porting::getTimeUs();
+
+		m_map_timer_unload_time->increment(end_time - start_time);
 	}
 
 	/*
@@ -835,6 +872,8 @@ void Server::AsyncRunStep(bool initial_step)
 		Send queued-for-sending map edit events.
 	*/
 	{
+		u64 start_time = porting::getTimeUs();
+
 		// We will be accessing the environment
 		MutexAutoLock lock(m_env_mutex);
 
@@ -935,6 +974,9 @@ void Server::AsyncRunStep(bool initial_step)
 		// Send all metadata updates
 		if (node_meta_updates.size())
 			sendMetadataChanged(node_meta_updates);
+
+		u64 end_time = porting::getTimeUs();
+		m_mapedit_time->increment(end_time - start_time);
 	}
 
 	/*
@@ -2348,6 +2390,7 @@ void Server::SendBlockNoLock(session_t peer_id, MapBlock *block, u8 ver,
 
 void Server::SendBlocks(float dtime)
 {
+	u64 start_time = porting::getTimeUs();
 	MutexAutoLock envlock(m_env_mutex);
 	//TODO check if one big lock could be faster then multiple small ones
 
@@ -2401,13 +2444,29 @@ void Server::SendBlocks(float dtime)
 		if (!client)
 			continue;
 
-		SendBlockNoLock(block_to_send.peer_id, block, client->serialization_version,
-				client->net_proto_version);
+		m_threadpool->enqueue(
+			[this, block_to_send, block, client](){
+			SendBlockNoLock(
+				block_to_send.peer_id,
+				block,
+				client->serialization_version,
+				client->net_proto_version
+			);
+		});
 
 		client->SentBlock(block_to_send.pos);
 		total_sending++;
+		m_sent_blocks->increment(1);
 	}
+
+	while (!m_threadpool->empty()){
+		sleep_ms(1);
+	}
+
 	m_clients.unlock();
+
+	u64 end_time = porting::getTimeUs();
+	m_sendblocks_time->increment(end_time - start_time);
 }
 
 bool Server::SendBlock(session_t peer_id, const v3s16 &blockpos)

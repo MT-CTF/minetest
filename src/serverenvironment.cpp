@@ -393,13 +393,14 @@ static std::random_device seed;
 
 ServerEnvironment::ServerEnvironment(ServerMap *map,
 	ServerScripting *scriptIface, Server *server,
-	const std::string &path_world):
+	const std::string &path_world, MetricsBackend* m_metrics_backend):
 	Environment(server),
 	m_map(map),
 	m_script(scriptIface),
 	m_server(server),
 	m_path_world(path_world),
-	m_rgen(seed())
+	m_rgen(seed()),
+	m_metrics_backend(m_metrics_backend)
 {
 	// Determine which database backend to use
 	std::string conf_path = path_world + DIR_DELIM + "world.mt";
@@ -407,6 +408,31 @@ ServerEnvironment::ServerEnvironment(ServerMap *map,
 
 	std::string player_backend_name = "sqlite3";
 	std::string auth_backend_name = "sqlite3";
+
+	m_playermove_time = m_metrics_backend->addCounter(
+		"minetest_core_env_playermove_time",
+		"Env playermove time"
+	);
+
+	m_active_block_mgmt_time = m_metrics_backend->addCounter(
+		"minetest_core_env_active_block_mgmt_time",
+		"Env playermove time"
+	);
+
+	m_nodetimers_time = m_metrics_backend->addCounter(
+		"minetest_core_env_nodetimers_time",
+		"Env nodetimers time"
+	);
+
+	m_abm_time = m_metrics_backend->addCounter(
+		"minetest_core_env_abm_time",
+		"Env abm time"
+	);
+
+	m_globalstep_time = m_metrics_backend->addCounter(
+		"minetest_core_env_globalstep_time",
+		"Env globalstep time"
+	);
 
 	bool succeeded = conf.readConfigFile(conf_path.c_str());
 
@@ -1301,6 +1327,7 @@ void ServerEnvironment::step(float dtime)
 		Handle players
 	*/
 	{
+		u64 start_time = porting::getTimeUs();
 		ScopeProfiler sp(g_profiler, "ServerEnv: move players", SPT_AVG);
 		for (RemotePlayer *player : m_players) {
 			// Ignore disconnected players
@@ -1310,12 +1337,15 @@ void ServerEnvironment::step(float dtime)
 			// Move
 			player->move(dtime, this, 100 * BS);
 		}
+		u64 end_time = porting::getTimeUs();
+		m_playermove_time->increment(end_time - start_time);
 	}
 
 	/*
 		Manage active block list
 	*/
 	if (m_active_blocks_management_interval.step(dtime, m_cache_active_block_mgmt_interval)) {
+		u64 start_time = porting::getTimeUs();
 		ScopeProfiler sp(g_profiler, "ServerEnv: update active blocks", SPT_AVG);
 		/*
 			Get player block positions
@@ -1376,12 +1406,16 @@ void ServerEnvironment::step(float dtime)
 
 			activateBlock(block);
 		}
+
+		u64 end_time = porting::getTimeUs();
+		m_active_block_mgmt_time->increment(end_time - start_time);
 	}
 
 	/*
 		Mess around in active blocks
 	*/
 	if (m_active_blocks_nodemetadata_interval.step(dtime, m_cache_nodetimer_interval)) {
+		u64 start_time = porting::getTimeUs();
 		ScopeProfiler sp(g_profiler, "ServerEnv: Run node timers", SPT_AVG);
 
 		float dtime = m_cache_nodetimer_interval;
@@ -1417,9 +1451,12 @@ void ServerEnvironment::step(float dtime)
 				}
 			}
 		}
+		u64 end_time = porting::getTimeUs();
+		m_nodetimers_time->increment(end_time - start_time);
 	}
 
 	if (m_active_block_modifier_interval.step(dtime, m_cache_abm_interval)) {
+		u64 start_time = porting::getTimeUs();
 		ScopeProfiler sp(g_profiler, "SEnv: modify in blocks avg per interval", SPT_AVG);
 		TimeTaker timer("modify in active blocks per interval");
 
@@ -1468,12 +1505,17 @@ void ServerEnvironment::step(float dtime)
 		g_profiler->avg("ServerEnv: ABMs run", abms_run);
 
 		timer.stop(true);
+		u64 end_time = porting::getTimeUs();
+		m_abm_time->increment(end_time - start_time);
 	}
 
 	/*
 		Step script environment (run global on_step())
 	*/
+	u64 start_time = porting::getTimeUs();
 	m_script->environment_Step(dtime);
+	u64 end_time = porting::getTimeUs();
+	m_globalstep_time->increment(end_time - start_time);
 
 	/*
 		Step active objects

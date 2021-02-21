@@ -24,7 +24,9 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "mapnode.h"
 #include "settings.h"
 #include "server/activeobjectmgr.h"
+#include "util/metricsbackend.h"
 #include "util/numeric.h"
+#include "porting.h"
 #include <set>
 #include <random>
 
@@ -194,7 +196,7 @@ class ServerEnvironment : public Environment
 {
 public:
 	ServerEnvironment(ServerMap *map, ServerScripting *scriptIface,
-		Server *server, const std::string &path_world);
+		Server *server, const std::string &path_world, MetricsBackend* m_metrics_backend);
 	~ServerEnvironment();
 
 	Map & getMap();
@@ -475,4 +477,11 @@ private:
 	std::unordered_map<u32, u16> m_particle_spawner_attachments;
 
 	ServerActiveObject* createSAO(ActiveObjectType type, v3f pos, const std::string &data);
+
+	MetricsBackend* m_metrics_backend;
+	MetricPtr m_playermove_time;
+	MetricPtr m_active_block_mgmt_time;
+	MetricPtr m_nodetimers_time;
+	MetricPtr m_abm_time;
+	MetricPtr m_globalstep_time;
 };

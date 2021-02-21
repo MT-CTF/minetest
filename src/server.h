@@ -43,6 +43,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <list>
 #include <map>
 #include <vector>
+#include "util/ThreadPool.h"
 
 class ChatEvent;
 struct ChatEventChat;
@@ -585,6 +586,9 @@ private:
 
 	std::unordered_map<std::string, Translations> server_translations;
 
+	// Worker thread pool
+	ThreadPool *m_threadpool = nullptr;
+
 	/*
 		Threads
 	*/
@@ -686,6 +690,11 @@ private:
 	MetricPtr m_aom_buffer_counter;
 	MetricPtr m_packet_recv_counter;
 	MetricPtr m_packet_recv_processed_counter;
+	MetricPtr m_sent_blocks;
+	MetricPtr m_sendblocks_time;
+	MetricPtr m_env_step_time;
+	MetricPtr m_map_timer_unload_time;
+	MetricPtr m_mapedit_time;
 };
 
 /*
