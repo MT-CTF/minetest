@@ -411,27 +411,32 @@ ServerEnvironment::ServerEnvironment(ServerMap *map,
 
 	m_playermove_time = m_metrics_backend->addCounter(
 		"minetest_core_env_playermove_time",
-		"Env playermove time"
+		"Env playermove time (us)"
 	);
 
 	m_active_block_mgmt_time = m_metrics_backend->addCounter(
 		"minetest_core_env_active_block_mgmt_time",
-		"Env playermove time"
+		"Env playermove time (us)"
 	);
 
 	m_nodetimers_time = m_metrics_backend->addCounter(
 		"minetest_core_env_nodetimers_time",
-		"Env nodetimers time"
+		"Env nodetimers time (us)"
 	);
 
 	m_abm_time = m_metrics_backend->addCounter(
 		"minetest_core_env_abm_time",
-		"Env abm time"
+		"Env abm time (us)"
 	);
 
 	m_globalstep_time = m_metrics_backend->addCounter(
 		"minetest_core_env_globalstep_time",
-		"Env globalstep time"
+		"Env globalstep time (us)"
+	);
+
+	m_ao_time = m_metrics_backend->addCounter(
+			"minetest_core_env_active_object_step_time",
+			"Env active object step time (us)"
 	);
 
 	bool succeeded = conf.readConfigFile(conf_path.c_str());
@@ -1432,7 +1437,7 @@ void ServerEnvironment::step(float dtime)
 			block->setTimestampNoChangedFlag(m_game_time);
 			// If time has changed much from the one on disk,
 			// set block to be saved when it is unloaded
-			if(block->getTimestamp() > block->getDiskTimestamp() + 60)
+			if (block->getTimestamp() > block->getDiskTimestamp() + 60)
 				block->raiseModified(MOD_STATE_WRITE_AT_UNLOAD,
 					MOD_REASON_BLOCK_EXPIRED);
 
@@ -1494,8 +1499,8 @@ void ServerEnvironment::step(float dtime)
 
 			if (time_ms > max_time_ms) {
 				warningstream << "active block modifiers took "
-					  << time_ms << "ms (processed " << i << " of "
-					  << output.size() << " active blocks)" << std::endl;
+					<< time_ms << "ms (processed " << i << " of "
+					<< output.size() << " active blocks)" << std::endl;
 				break;
 			}
 		}
@@ -1512,17 +1517,19 @@ void ServerEnvironment::step(float dtime)
 	/*
 		Step script environment (run global on_step())
 	*/
-	u64 start_time = porting::getTimeUs();
-	m_script->environment_Step(dtime);
-	u64 end_time = porting::getTimeUs();
-	m_globalstep_time->increment(end_time - start_time);
+	{
+		u64 start_time = porting::getTimeUs();
+		m_script->environment_Step(dtime);
+		u64 end_time = porting::getTimeUs();
+		m_globalstep_time->increment(end_time - start_time);
+	}
 
 	/*
 		Step active objects
 	*/
 	{
 		ScopeProfiler sp(g_profiler, "ServerEnv: Run SAO::step()", SPT_AVG);
-
+		u64 start_time = porting::getTimeUs();
 		// This helps the objects to send data at the same time
 		bool send_recommended = false;
 		m_send_recommended_timer += dtime;
@@ -1541,6 +1548,8 @@ void ServerEnvironment::step(float dtime)
 			obj->dumpAOMessagesToQueue(m_active_object_messages);
 		};
 		m_ao_manager.step(dtime, cb_state);
+		u64 end_time = porting::getTimeUs();
+		m_ao_time->increment(end_time - start_time);
 	}
 
 	/*

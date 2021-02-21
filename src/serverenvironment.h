@@ -484,4 +484,5 @@ private:
 	MetricPtr m_nodetimers_time;
 	MetricPtr m_abm_time;
 	MetricPtr m_globalstep_time;
+	MetricPtr m_ao_time;
 };
