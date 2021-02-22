@@ -255,9 +255,13 @@ Server::Server(
 			"minetest_core_timeofday",
 			"Time of day value");
 
-	m_lag_gauge = m_metrics_backend->addGauge(
+	m_latency_gauge = m_metrics_backend->addGauge(
 			"minetest_core_latency",
 			"Latency value (in seconds)");
+
+	m_max_lag_gauge = m_metrics_backend->addGauge(
+			"minetest_core_max_lag",
+			"Maximum lag value (in seconds)");
 
 	m_aom_buffer_counter = m_metrics_backend->addCounter(
 			"minetest_core_aom_generated_count",
@@ -283,20 +287,20 @@ Server::Server(
 
 	m_env_step_time = m_metrics_backend->addCounter(
 			"minetest_core_step_time",
-			"step time count"
+			"step time count (us)"
 	);
 
 	m_map_timer_unload_time = m_metrics_backend->addCounter(
 			"minetest_core_timer_unload_time",
-			"map timer and unload time"
+			"map timer and unload time (us)"
 	);
 
 	m_mapedit_time = m_metrics_backend->addCounter(
 			"minetest_core_mapedit_time",
-			"map edit time"
+			"map edit time (us)"
 	);
 
-	m_lag_gauge->set(g_settings->getFloat("dedicated_server_step"));
+	m_latency_gauge->set(g_settings->getFloat("dedicated_server_step"));
 
 	m_threadpool = new ThreadPool(8);
 }
@@ -631,6 +635,8 @@ void Server::AsyncRunStep(bool initial_step)
 		m_env->reportMaxLagEstimate(max_lag);
 		// Step environment
 
+		m_max_lag_gauge->set(max_lag);
+
 		u64 start_time = porting::getTimeUs();
 		m_env->step(dtime);
 		u64 end_time = porting::getTimeUs();
@@ -697,10 +703,10 @@ void Server::AsyncRunStep(bool initial_step)
 	m_clients.step(dtime);
 
 	// increase/decrease lag gauge gradually
-	if (m_lag_gauge->get() > dtime) {
-		m_lag_gauge->decrement(dtime/100);
+	if (m_latency_gauge->get() > dtime) {
+		m_latency_gauge->decrement(dtime / 100);
 	} else {
-		m_lag_gauge->increment(dtime/100);
+		m_latency_gauge->increment(dtime / 100);
 	}
 #if USE_CURL
 	// send masterserver announce
@@ -710,15 +716,15 @@ void Server::AsyncRunStep(bool initial_step)
 				g_settings->getBool("server_announce")) {
 			ServerList::sendAnnounce(counter ? ServerList::AA_UPDATE :
 						ServerList::AA_START,
-					m_bind_addr.getPort(),
-					m_clients.getPlayerNames(),
-					m_uptime_counter->get(),
-					m_env->getGameTime(),
-					m_lag_gauge->get(),
-					m_gamespec.id,
-					Mapgen::getMapgenName(m_emerge->mgparams->mgtype),
-					m_modmgr->getMods(),
-					m_dedicated);
+									 m_bind_addr.getPort(),
+									 m_clients.getPlayerNames(),
+									 m_uptime_counter->get(),
+									 m_env->getGameTime(),
+									 m_latency_gauge->get(),
+									 m_gamespec.id,
+									 Mapgen::getMapgenName(m_emerge->mgparams->mgtype),
+									 m_modmgr->getMods(),
+									 m_dedicated);
 			counter = 0.01;
 		}
 		counter += dtime;

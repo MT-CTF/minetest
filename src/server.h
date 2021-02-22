@@ -685,8 +685,8 @@ private:
 	MetricPtr m_uptime_counter;
 	MetricGaugePtr m_player_gauge;
 	MetricGaugePtr m_timeofday_gauge;
-	// current server step lag
-	MetricGaugePtr m_lag_gauge;
+	MetricGaugePtr m_latency_gauge; // current server step lag
+	MetricGaugePtr m_max_lag_gauge;
 	MetricPtr m_aom_buffer_counter;
 	MetricPtr m_packet_recv_counter;
 	MetricPtr m_packet_recv_processed_counter;
