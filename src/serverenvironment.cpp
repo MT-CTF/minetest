@@ -2155,7 +2155,7 @@ void ServerEnvironment::deactivateFarObjects(const bool _force_delete)
 		// If block is still active, don't remove
 		bool still_active = obj->isStaticAllowed() ?
 			m_active_blocks.contains(blockpos_o) :
-			getMap().getBlockNoCreateNoEx(blockpos_o) != nullptr;
+			true;
 		if (!force_delete && still_active)
 			return false;
 
