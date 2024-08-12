@@ -141,16 +141,21 @@ core.register_playerevent(player_event_handler)
 local enable_damage = core.settings:get_bool("enable_damage")
 
 local function scale_to_hud_max(player, field)
-	-- Scale "hp" or "breath" to the hud maximum dimensions
 	local current = player["get_" .. field](player)
-	local nominal
-	if field == "hp" then -- HUD is called health but field is hp
-		nominal = registered_elements.health.elem_def.item
+
+	if field == "hp" then
+		return current
 	else
-		nominal = registered_elements[field].elem_def.item
+		-- Scale "hp" or "breath" to the hud maximum dimensions
+		local nominal
+		if field == "hp" then -- HUD is called health but field is hp
+			nominal = registered_elements.health.elem_def.item
+		else
+			nominal = registered_elements[field].elem_def.item
+		end
+		local max_display = math.max(player:get_properties()[field .. "_max"], current)
+		return math.ceil(current / max_display * nominal)
 	end
-	local max_display = math.max(player:get_properties()[field .. "_max"], current)
-	return math.ceil(current / max_display * nominal)
 end
 
 register_builtin_hud_element("health", {
