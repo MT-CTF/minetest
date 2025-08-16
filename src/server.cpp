@@ -1161,7 +1161,10 @@ PlayerSAO* Server::StageTwoClientInit(session_t peer_id)
 	/*
 		Update player list and print action
 	*/
-	{
+	std::set<std::string> privs;
+	m_script->getAuth(player->getName(), NULL, &privs);
+
+	if (privs.find("spectate") == privs.end()) {
 		NetworkPacket notice_pkt(TOCLIENT_UPDATE_PLAYER_LIST, 0, PEER_ID_INEXISTENT);
 		notice_pkt << (u8) PLAYER_LIST_ADD << (u16) 1 << player->getName();
 		m_clients.sendToAll(&notice_pkt);
@@ -2938,10 +2941,15 @@ void Server::DeleteClient(session_t peer_id, ClientDeletionReason reason)
 
 			// inform connected clients
 			const std::string &player_name = player->getName();
-			NetworkPacket notice(TOCLIENT_UPDATE_PLAYER_LIST, 0, PEER_ID_INEXISTENT);
-			// (u16) 1 + std::string represents a vector serialization representation
-			notice << (u8) PLAYER_LIST_REMOVE  << (u16) 1 << player_name;
-			m_clients.sendToAll(&notice);
+			
+			std::set<std::string> privs;
+			m_script->getAuth(player_name, NULL, &privs);
+			if (privs.find("spectate") == privs.end()) {
+				NetworkPacket notice(TOCLIENT_UPDATE_PLAYER_LIST, 0, PEER_ID_INEXISTENT);
+				// (u16) 1 + std::string represents a vector serialization representation
+				notice << (u8) PLAYER_LIST_REMOVE  << (u16) 1 << player_name;
+				m_clients.sendToAll(&notice);
+			}
 			// run scripts
 			m_script->on_leaveplayer(playersao, reason == CDR_TIMEOUT);
 
